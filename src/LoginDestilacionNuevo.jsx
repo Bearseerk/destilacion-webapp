@@ -276,15 +276,20 @@ export default function LoginDestilacion() {
             fontSize: 11.5,
           }}
         >
-          <a
-            href="#"
+          <button
+            type="button"
             style={{
               color: palette.gold,
               textDecoration: "none",
+	      background: "none",
+              border: "none",
+              cursor: "pointer",
+              font: "inherit",
+              padding: 0,
             }}
           >
             Crear cuenta
-          </a>
+          </button>
         </div>
       </div>
     </div>
