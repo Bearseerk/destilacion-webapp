@@ -513,7 +513,7 @@ function ModuloCard({ modulo }) {
   );
 }
 
-function Header() {
+function Header({onLogout}) {
   const [ahora, setAhora] = useState(new Date());
 
   useEffect(() => {
@@ -592,6 +592,7 @@ function Header() {
           </span>
         </div>
         <button
+          onClick={onLogout}
           style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: 12,
@@ -610,12 +611,12 @@ function Header() {
   );
 }
 
-export default function DestilacionDashboard() {
+export default function DestilacionDashboard({onLogout}) {
   const modulos = [{ id: "DEST-0001", apodo: "Fermentador 1", recetaId: "ipa" }];
 
   return (
     <div style={{ minHeight: "100vh", background: palette.bg, fontFamily: "'IBM Plex Sans', sans-serif", padding: "28px 32px" }}>
-      <Header />
+      <Header onLogout={onLogout} />
 
       {modulos.map((m) => (
         <ModuloCard key={m.id} modulo={m} />
