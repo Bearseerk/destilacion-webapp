@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ── PON AQUÍ LA URL DE TU FUNCTION APP (misma que en el login) ──
-const API_BASE_URL = "https://proto-destilacion-g3czgaadh3ambycx.southcentralus-01.azurewebsites.net/api";
+const API_BASE_URL = "https://proto-destilacion-g3czgaad3ambycx.southcentralus-01.azurewebsites.net/api";
 
 // Convierte el formato que devuelve la API (columnas de la tabla Recetas)
 // al formato que ya usa toda la gráfica/UI (tempInterna/tempExterna/ph como [min,max])
@@ -368,7 +368,15 @@ function SelectorReceta({ recetas, recetaId, onChange, onCrear }) {
         </span>
         <select
           value={recetaId}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // El <select> siempre entrega el value como texto, aunque los
+            // ids reales sean números (vienen de la BD) — sin esto, la
+            // comparación .find(r => r.id === recetaId) nunca coincidía
+            // y por eso la gráfica se quedaba "congelada".
+            const valor = e.target.value;
+            const idsNumericos = recetas.every((r) => typeof r.id === "number");
+            onChange(idsNumericos ? Number(valor) : valor);
+          }}
           style={{
             background: palette.panelAlt,
             border: `1px solid ${palette.border}`,
