@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ── PON AQUÍ LA URL DE TU FUNCTION APP (misma que en el login) ──
-const API_BASE_URL = "https://proto-destilacion-g3czgaad3ambycx.southcentralus-01.azurewebsites.net/api";
+const API_BASE_URL = "https://proto-destilacion-g3czgaadh3ambycx.southcentralus-01.azurewebsites.net/api";
 
 // Convierte el formato que devuelve la API (columnas de la tabla Recetas)
 // al formato que ya usa toda la gráfica/UI (tempInterna/tempExterna/ph como [min,max])
