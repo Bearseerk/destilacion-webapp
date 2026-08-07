@@ -538,6 +538,11 @@ function ModuloCard({ modulo, usuarioId }) {
         <div>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.14em", color: palette.textMute, textTransform: "uppercase" }}>
             Módulo · {modulo.id}
+            {cargandoRecetas && (
+              <span style={{ marginLeft: 8, color: palette.textMute, fontWeight: 400 }}>
+                (cargando recetas...)
+              </span>
+            )}
           </div>
           <h2 style={{ fontFamily: "'Playfair Display', serif", color: palette.textBright, fontSize: 24, margin: "4px 0 0" }}>{modulo.apodo}</h2>
         </div>
