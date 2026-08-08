@@ -253,6 +253,47 @@ function GraficaCombinada({ serie, rangos, filtro }) {
   const tiempoPorIdx = {};
   serieVisible.forEach((p) => { tiempoPorIdx[p.idx] = p.tiempo; });
 
+  // segmentar() parte cada métrica en varios <Line> (en rango / fuera de
+  // rango) y duplica el punto de quiebre entre segmentos vecinos para que
+  // la línea se vea continua. Como todos esos <Line> comparten el mismo
+  // "name", el tooltip por defecto de Recharts muestra una fila por cada
+  // <Line> activa cerca del cursor — si dos segmentos de la misma métrica
+  // están cerca uno del otro, la métrica aparece duplicada con valores
+  // distintos. Este tooltip personalizado se queda solo con la entrada
+  // que corresponde exactamente al punto mostrado (idx === label) y
+  // deduplica por métrica, así cada una sale una sola vez.
+  function tooltipPersonalizado({ active, payload, label }) {
+    if (!active || !payload || payload.length === 0) return null;
+    const vistos = new Set();
+    const filas = [];
+    payload.forEach((entry) => {
+      if (entry.payload?.idx !== label) return;
+      if (vistos.has(entry.name)) return;
+      vistos.add(entry.name);
+      filas.push(entry);
+    });
+    if (filas.length === 0) return null;
+    return (
+      <div
+        style={{
+          background: palette.panelAlt,
+          border: `1px solid ${palette.border}`,
+          borderRadius: 4,
+          fontFamily: "IBM Plex Mono",
+          fontSize: 12,
+          padding: "8px 10px",
+        }}
+      >
+        <div style={{ color: palette.textDim, marginBottom: 4 }}>{tiempoPorIdx[label] ?? ""}</div>
+        {filas.map((entry) => (
+          <div key={entry.name} style={{ color: entry.color }}>
+            {(METRICAS[entry.name]?.label ?? entry.name)} : {entry.value}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -298,17 +339,7 @@ function GraficaCombinada({ serie, rangos, filtro }) {
             hide={filtro === "global"}
           />
         )}
-        <Tooltip
-          contentStyle={{
-            background: palette.panelAlt,
-            border: `1px solid ${palette.border}`,
-            borderRadius: 4,
-            fontFamily: "IBM Plex Mono",
-            fontSize: 12,
-          }}
-          labelStyle={{ color: palette.textDim }}
-          labelFormatter={(idx) => tiempoPorIdx[idx] ?? ""}
-        />
+        <Tooltip content={tooltipPersonalizado} />
         <Legend
           wrapperStyle={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: palette.textDim }}
           formatter={(value) => METRICAS[value]?.label ?? value}
