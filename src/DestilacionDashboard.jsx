@@ -40,6 +40,8 @@ const palette = {
   warn: "#e0a83e",
   rojo: "#d15252",
   azul: "#6fa8c9",
+  azulClaro: "#8ecfe8",
+  blanco: "#f4f4f4",
 };
 
 // ── Recetas predefinidas (las 10 populares) ──
@@ -114,12 +116,23 @@ function segmentar(serie, key, rango) {
   return segmentos;
 }
 
-// ── Calcula cuánto tiempo estuvo fuera de rango (asume 1 punto = 1 hora) ──
-function tiempoFueraDeRango(serie, key, rango, minutosPorPunto = 60) {
-  if (!rango) return 0;
+// ── Calcula cuánto tiempo estuvo fuera de rango, usando el tiempo real
+//    entre lecturas consecutivas (idx = minutos desde epoch) en vez de
+//    asumir un intervalo fijo — así funciona igual con lecturas cada 12s,
+//    cada 3 min, o cualquier otro ritmo. A cada punto fuera de rango se le
+//    atribuye el tiempo transcurrido desde la lectura anterior. ──
+function tiempoFueraDeRango(serie, key, rango) {
+  if (!rango || serie.length < 2) return 0;
   const [min, max] = rango;
-  const puntosFuera = serie.filter((p) => p[key] < min || p[key] > max).length;
-  return puntosFuera * minutosPorPunto;
+  let minutosFuera = 0;
+  for (let i = 1; i < serie.length; i++) {
+    const punto = serie[i];
+    const fuera = punto[key] < min || punto[key] > max;
+    if (!fuera) continue;
+    const deltaMin = punto.idx - serie[i - 1].idx;
+    if (deltaMin > 0) minutosFuera += deltaMin;
+  }
+  return Math.round(minutosFuera);
 }
 
 function formatoDuracion(minutos) {
@@ -133,10 +146,10 @@ function formatoDuracion(minutos) {
 
 const METRICAS = {
   global: { label: "Global", key: null, color: null, unidad: "" },
-  tempInterna: { label: "Temp. Interna", key: "tempInterna", color: palette.amber, unidad: "°C" },
-  tempExterna: { label: "Temp. Externa", key: "tempExterna", color: palette.azul, unidad: "°C" },
-  ph: { label: "pH", key: "ph", color: palette.gold, unidad: "" },
-  densidad: { label: "Densidad", key: "densidad", color: palette.good, unidad: "SG" },
+  tempInterna: { label: "Temp. Interna", key: "tempInterna", color: palette.amber, unidad: "°C" },     // naranja
+  tempExterna: { label: "Temp. Externa", key: "tempExterna", color: palette.blanco, unidad: "°C" },    // blanco
+  ph: { label: "pH", key: "ph", color: palette.azulClaro, unidad: "" },                                 // azul clarito
+  densidad: { label: "Densidad", key: "densidad", color: palette.good, unidad: "SG" },                  // verde
 };
 
 function Metric({ label, valor, unidad, fueraMin, color }) {
@@ -711,8 +724,8 @@ function ModuloCard({ modulo, usuarioId }) {
       {/* Métricas actuales */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
         <Metric label="Temp. Interna" valor={ultimo.tempInterna} unidad="°C" fueraMin={duraciones.tempInterna} color={palette.amber} />
-        <Metric label="Temp. Externa" valor={ultimo.tempExterna} unidad="°C" fueraMin={duraciones.tempExterna} color={palette.azul} />
-        <Metric label="pH" valor={ultimo.ph} unidad="" fueraMin={duraciones.ph} color={palette.gold} />
+        <Metric label="Temp. Externa" valor={ultimo.tempExterna} unidad="°C" fueraMin={duraciones.tempExterna} color={palette.blanco} />
+        <Metric label="pH" valor={ultimo.ph} unidad="" fueraMin={duraciones.ph} color={palette.azulClaro} />
         <Metric label="Densidad" valor={ultimo.densidad.toFixed(3)} unidad="SG" fueraMin={duraciones.densidad} color={palette.good} />
       </div>
 
