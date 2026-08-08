@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ── PON AQUÍ LA URL DE TU FUNCTION APP (misma que en el login) ──
-const API_BASE_URL = "https://TU-FUNCTION-APP.azurewebsites.net/api";
+const API_BASE_URL = "https://proto-destilacion-g3czgaadh3ambycx.southcentralus-01.azurewebsites.net/api";
 
 // Convierte el formato que devuelve la API (columnas de la tabla Recetas)
 // al formato que ya usa toda la gráfica/UI (tempInterna/tempExterna/ph como [min,max])
@@ -385,6 +385,7 @@ function SelectorReceta({ recetas, recetaId, onChange, onCrear }) {
         densidadFinal: "",
       });
     } catch (err) {
+      console.error("Error al guardar receta:", err);
       setErrorGuardar("No se pudo guardar la receta. Intenta de nuevo.");
     } finally {
       setGuardando(false);
@@ -551,6 +552,7 @@ function ModuloCard({ modulo, usuarioId }) {
       } catch (err) {
         // Si falla la conexión, se sigue viendo con las predefinidas
         // locales para que el dashboard no se quede en blanco.
+        console.error("Error al cargar recetas:", err);
       } finally {
         if (!cancelado) setCargandoRecetas(false);
       }
@@ -592,6 +594,7 @@ function ModuloCard({ modulo, usuarioId }) {
         }
       } catch (err) {
         // Sin datos reales todavía — se sigue con la serie simulada.
+        console.error("Error al cargar lecturas:", err);
       }
     }
 
