@@ -66,14 +66,21 @@ function generarSerieDemo(receta, puntos = 24) {
   const dIni = receta.densidadInicial;
   const dFin = receta.densidadFinal;
 
+  // Ubica los puntos de ejemplo en su minuto-del-día real, terminando
+  // "ahora" y yendo hacia atrás cada 12s — así se ve igual de posicionado
+  // que se van a ver los datos reales una vez que lleguen.
+  const ahora = new Date();
+  const minutoAhora = ahora.getHours() * 60 + ahora.getMinutes() + ahora.getSeconds() / 60;
+
   return Array.from({ length: puntos }, (_, i) => {
     // Simula una desviación ocasional fuera de rango para demostrar el resaltado rojo
     const desvio = i > 14 && i < 18 ? 3.5 : 0;
     // La densidad va bajando de forma natural de dIni a dFin conforme avanza la fermentación
     const progreso = i / (puntos - 1);
+    const minutosAtras = (puntos - 1 - i) * (12 / 60); // 12s por punto, en minutos
     return {
-      tiempo: `${i}:00`,
-      idx: i,
+      tiempo: `hace ${Math.round((puntos - 1 - i) * 12)}s`,
+      idx: (minutoAhora - minutosAtras + 1440) % 1440,
       tempInterna: +(midTI + Math.sin(i / 3) * 1.1 + desvio + (Math.random() - 0.5) * 0.4).toFixed(2),
       tempExterna: +(midTE + Math.sin(i / 4) * 0.8 + (Math.random() - 0.5) * 0.3).toFixed(2),
       ph: +(midPh + Math.sin(i / 5) * 0.12 + (Math.random() - 0.5) * 0.05).toFixed(2),
@@ -208,16 +215,25 @@ function BotonFiltro({ activo, label, color, onClick }) {
 }
 
 function GraficaCombinada({ serie, rangos, filtro }) {
-  const VENTANA = 24; // espacios fijos en el eje X — así con pocos puntos
-                       // se ve un tramo corto en vez de estirarse a todo
-                       // el ancho, y se va "llenando" según llegan datos
+  // Eje X fijo: minuto del día (0 = 00:00, 1439 = 23:59). Así la gráfica
+  // siempre representa el día completo y no se estira ni se recorre —
+  // los puntos aparecen en su posición real de hora del día.
+  const MINUTOS_DIA = 1440;
+  const TICKS_HORA = Array.from({ length: 24 }, (_, h) => h * 60);
+
+  function formatoHora12(minutos) {
+    const h = Math.floor(minutos / 60) % 24;
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return String(h12);
+  }
+
   const metricasAMostrar = filtro === "global" ? ["tempInterna", "tempExterna", "ph", "densidad"] : [filtro];
 
   // Un solo eje si se filtró a una métrica; si es global, temp comparte eje y ph/densidad van aparte
   const necesitaEjePh = filtro === "global" || filtro === "ph";
   const necesitaEjeDensidad = filtro === "global" || filtro === "densidad";
 
-  // Para mostrar la hora real en el eje/tooltip aunque el eje ahora sea numérico (idx)
+  // Para mostrar la hora real en el tooltip aunque el eje sea numérico (minuto del día)
   const tiempoPorIdx = {};
   serie.forEach((p) => { tiempoPorIdx[p.idx] = p.tiempo; });
 
@@ -228,9 +244,9 @@ function GraficaCombinada({ serie, rangos, filtro }) {
         <XAxis
           dataKey="idx"
           type="number"
-          domain={[0, VENTANA - 1]}
-          allowDecimals={false}
-          tickFormatter={(idx) => tiempoPorIdx[idx] ?? ""}
+          domain={[0, MINUTOS_DIA - 1]}
+          ticks={TICKS_HORA}
+          tickFormatter={formatoHora12}
           tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }}
           axisLine={{ stroke: palette.border }}
           tickLine={false}
@@ -528,25 +544,34 @@ function ModuloCard({ modulo, usuarioId }) {
   }, [usuarioId]);
 
   // Trae las lecturas reales del ESP32 (si ya hay) y las refresca cada
-  // 20 segundos (polling) — mientras no haya datos reales, se sigue
-  // mostrando la serie simulada para que el dashboard no se vea vacío.
+  // 12 segundos (mismo ritmo con el que manda datos el ESP32) — mientras
+  // no haya datos reales, se sigue mostrando la serie simulada para que
+  // el dashboard no se vea vacío.
   useEffect(() => {
     let cancelado = false;
 
     async function cargarLecturas() {
       try {
-        const res = await fetch(`${API_BASE_URL}/lecturas?deviceId=${modulo.deviceId}&limite=24`);
+        // limite alto porque a 12s por lectura, un día completo son ~3600
+        // puntos — se piden todos los que haya del día en curso.
+        const res = await fetch(`${API_BASE_URL}/lecturas?deviceId=${modulo.deviceId}&limite=3600`);
         if (!res.ok) throw new Error("fallo");
         const data = await res.json();
         if (!cancelado && data.lecturas && data.lecturas.length > 0) {
-          const mapeadas = data.lecturas.map((l, i) => ({
-            tiempo: new Date(l.timestamp).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
-            idx: i,
-            tempInterna: l.tempFermentador,
-            tempExterna: l.tempRefrigerador,
-            ph: l.ph,
-            densidad: l.densidad,
-          }));
+          const mapeadas = data.lecturas.map((l) => {
+            const fecha = new Date(l.timestamp);
+            return {
+              tiempo: fecha.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+              // Posición real en el eje: minuto del día (0-1439), con
+              // fracción de segundos para que no se amontonen los puntos
+              // que caen en el mismo minuto.
+              idx: fecha.getHours() * 60 + fecha.getMinutes() + fecha.getSeconds() / 60,
+              tempInterna: l.tempFermentador,
+              tempExterna: l.tempRefrigerador,
+              ph: l.ph,
+              densidad: l.densidad,
+            };
+          });
           setSerieReal(mapeadas);
         }
       } catch (err) {
@@ -555,7 +580,7 @@ function ModuloCard({ modulo, usuarioId }) {
     }
 
     cargarLecturas();
-    const intervalo = setInterval(cargarLecturas, 20000);
+    const intervalo = setInterval(cargarLecturas, 12000); // cada 12s, igual al ritmo con el que manda el ESP32
     return () => { cancelado = true; clearInterval(intervalo); };
   }, [modulo.deviceId]);
 
