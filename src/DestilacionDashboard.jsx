@@ -66,11 +66,9 @@ function generarSerieDemo(receta, puntos = 24) {
   const dIni = receta.densidadInicial;
   const dFin = receta.densidadFinal;
 
-  // Ubica los puntos de ejemplo en su minuto-del-día real, terminando
-  // "ahora" y yendo hacia atrás cada 12s — así se ve igual de posicionado
-  // que se van a ver los datos reales una vez que lleguen.
-  const ahora = new Date();
-  const minutoAhora = ahora.getHours() * 60 + ahora.getMinutes() + ahora.getSeconds() / 60;
+  // Ubica los puntos de ejemplo en minutos-desde-epoch, terminando "ahora"
+  // y yendo hacia atrás cada 12s — mismo sistema que usan los datos reales.
+  const minutoAhora = Date.now() / 60000;
 
   return Array.from({ length: puntos }, (_, i) => {
     // Simula una desviación ocasional fuera de rango para demostrar el resaltado rojo
@@ -80,7 +78,7 @@ function generarSerieDemo(receta, puntos = 24) {
     const minutosAtras = (puntos - 1 - i) * (12 / 60); // 12s por punto, en minutos
     return {
       tiempo: `hace ${Math.round((puntos - 1 - i) * 12)}s`,
-      idx: (minutoAhora - minutosAtras + 1440) % 1440,
+      idx: minutoAhora - minutosAtras,
       tempInterna: +(midTI + Math.sin(i / 3) * 1.1 + desvio + (Math.random() - 0.5) * 0.4).toFixed(2),
       tempExterna: +(midTE + Math.sin(i / 4) * 0.8 + (Math.random() - 0.5) * 0.3).toFixed(2),
       ph: +(midPh + Math.sin(i / 5) * 0.12 + (Math.random() - 0.5) * 0.05).toFixed(2),
@@ -215,17 +213,35 @@ function BotonFiltro({ activo, label, color, onClick }) {
 }
 
 function GraficaCombinada({ serie, rangos, filtro }) {
-  // Eje X fijo: minuto del día (0 = 00:00, 1439 = 23:59). Así la gráfica
-  // siempre representa el día completo y no se estira ni se recorre —
-  // los puntos aparecen en su posición real de hora del día.
-  const MINUTOS_DIA = 1440;
-  const TICKS_HORA = Array.from({ length: 24 }, (_, h) => h * 60);
+  // Ventana MÓVIL de las últimas 24 horas, terminando siempre en "ahora".
+  // A diferencia de un eje fijo de medianoche a medianoche (que dejaba
+  // huecos vacíos absurdos), esta ventana se va recorriendo sola: cada
+  // minuto que pasa, se "cae" del lado izquierdo lo que ya tiene más de
+  // 24h, y el lado derecho siempre representa el momento actual.
+  const [ahoraMin, setAhoraMin] = useState(() => Math.floor(Date.now() / 60000));
+  useEffect(() => {
+    const id = setInterval(() => setAhoraMin(Math.floor(Date.now() / 60000)), 60000);
+    return () => clearInterval(id);
+  }, []);
 
-  function formatoHora12(minutos) {
-    const h = Math.floor(minutos / 60) % 24;
+  const VENTANA_MIN = 24 * 60;
+  const domainMin = ahoraMin - VENTANA_MIN;
+  const domainMax = ahoraMin;
+
+  // Genera una marca por cada hora exacta que cae dentro de la ventana visible
+  const ticks = [];
+  const primerTick = Math.ceil(domainMin / 60) * 60;
+  for (let t = primerTick; t <= domainMax; t += 60) ticks.push(t);
+
+  function formatoHora12(minutosEpoch) {
+    const fecha = new Date(minutosEpoch * 60000);
+    const h = fecha.getHours();
     const h12 = h % 12 === 0 ? 12 : h % 12;
     return String(h12);
   }
+
+  // Solo se dibuja lo que cae dentro de la ventana visible actual
+  const serieVisible = serie.filter((p) => p.idx >= domainMin && p.idx <= domainMax);
 
   const metricasAMostrar = filtro === "global" ? ["tempInterna", "tempExterna", "ph", "densidad"] : [filtro];
 
@@ -233,9 +249,9 @@ function GraficaCombinada({ serie, rangos, filtro }) {
   const necesitaEjePh = filtro === "global" || filtro === "ph";
   const necesitaEjeDensidad = filtro === "global" || filtro === "densidad";
 
-  // Para mostrar la hora real en el tooltip aunque el eje sea numérico (minuto del día)
+  // Para mostrar la hora real en el tooltip aunque el eje sea numérico (minutos desde epoch)
   const tiempoPorIdx = {};
-  serie.forEach((p) => { tiempoPorIdx[p.idx] = p.tiempo; });
+  serieVisible.forEach((p) => { tiempoPorIdx[p.idx] = p.tiempo; });
 
   return (
     <ResponsiveContainer width="100%" height={320}>
@@ -244,8 +260,8 @@ function GraficaCombinada({ serie, rangos, filtro }) {
         <XAxis
           dataKey="idx"
           type="number"
-          domain={[0, MINUTOS_DIA - 1]}
-          ticks={TICKS_HORA}
+          domain={[domainMin, domainMax]}
+          ticks={ticks}
           tickFormatter={formatoHora12}
           tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }}
           axisLine={{ stroke: palette.border }}
@@ -301,7 +317,7 @@ function GraficaCombinada({ serie, rangos, filtro }) {
         {metricasAMostrar.map((metricaId) => {
           const m = METRICAS[metricaId];
           const eje = metricaId === "ph" ? "ph" : metricaId === "densidad" ? "densidad" : "temp";
-          const segmentos = segmentar(serie, m.key, rangos[metricaId]);
+          const segmentos = segmentar(serieVisible, m.key, rangos[metricaId]);
 
           return segmentos.map((seg, i) => (
             <Line
@@ -565,7 +581,7 @@ function ModuloCard({ modulo, usuarioId }) {
               // Posición real en el eje: minuto del día (0-1439), con
               // fracción de segundos para que no se amontonen los puntos
               // que caen en el mismo minuto.
-              idx: fecha.getHours() * 60 + fecha.getMinutes() + fecha.getSeconds() / 60,
+              idx: fecha.getTime() / 60000, // minutos desde epoch — siempre creciente, no se reinicia a medianoche
               tempInterna: l.tempFermentador,
               tempExterna: l.tempRefrigerador,
               ph: l.ph,
