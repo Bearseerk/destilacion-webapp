@@ -208,20 +208,29 @@ function BotonFiltro({ activo, label, color, onClick }) {
 }
 
 function GraficaCombinada({ serie, rangos, filtro }) {
+  const VENTANA = 24; // espacios fijos en el eje X — así con pocos puntos
+                       // se ve un tramo corto en vez de estirarse a todo
+                       // el ancho, y se va "llenando" según llegan datos
   const metricasAMostrar = filtro === "global" ? ["tempInterna", "tempExterna", "ph", "densidad"] : [filtro];
 
   // Un solo eje si se filtró a una métrica; si es global, temp comparte eje y ph/densidad van aparte
   const necesitaEjePh = filtro === "global" || filtro === "ph";
   const necesitaEjeDensidad = filtro === "global" || filtro === "densidad";
 
+  // Para mostrar la hora real en el eje/tooltip aunque el eje ahora sea numérico (idx)
+  const tiempoPorIdx = {};
+  serie.forEach((p) => { tiempoPorIdx[p.idx] = p.tiempo; });
+
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
         <CartesianGrid stroke={palette.borderSoft} vertical={false} />
         <XAxis
-          dataKey="tiempo"
-          type="category"
-          allowDuplicatedCategory={false}
+          dataKey="idx"
+          type="number"
+          domain={[0, VENTANA - 1]}
+          allowDecimals={false}
+          tickFormatter={(idx) => tiempoPorIdx[idx] ?? ""}
           tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }}
           axisLine={{ stroke: palette.border }}
           tickLine={false}
@@ -266,6 +275,7 @@ function GraficaCombinada({ serie, rangos, filtro }) {
             fontSize: 12,
           }}
           labelStyle={{ color: palette.textDim }}
+          labelFormatter={(idx) => tiempoPorIdx[idx] ?? ""}
         />
         <Legend
           wrapperStyle={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: palette.textDim }}
