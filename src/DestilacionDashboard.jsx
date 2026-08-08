@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ── PON AQUÍ LA URL DE TU FUNCTION APP (misma que en el login) ──
-const API_BASE_URL = "https://proto-destilacion-g3czgaadh3ambycx.southcentralus-01.azurewebsites.net/api";
+const API_BASE_URL = "https://TU-FUNCTION-APP.azurewebsites.net/api";
 
 // Convierte el formato que devuelve la API (columnas de la tabla Recetas)
 // al formato que ya usa toda la gráfica/UI (tempInterna/tempExterna/ph como [min,max])
@@ -491,6 +491,7 @@ function ModuloCard({ modulo, usuarioId }) {
   const [recetaId, setRecetaId] = useState(modulo.recetaId);
   const [filtro, setFiltro] = useState("global");
   const [cargandoRecetas, setCargandoRecetas] = useState(true);
+  const [serieReal, setSerieReal] = useState(null);
 
   // Trae las recetas reales (globales + las que ya haya creado este
   // usuario) en cuanto se abre el dashboard, en vez de solo usar las
@@ -516,10 +517,46 @@ function ModuloCard({ modulo, usuarioId }) {
     return () => { cancelado = true; };
   }, [usuarioId]);
 
+  // Trae las lecturas reales del ESP32 (si ya hay) y las refresca cada
+  // 20 segundos (polling) — mientras no haya datos reales, se sigue
+  // mostrando la serie simulada para que el dashboard no se vea vacío.
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarLecturas() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/lecturas?deviceId=${modulo.deviceId}&limite=24`);
+        if (!res.ok) throw new Error("fallo");
+        const data = await res.json();
+        if (!cancelado && data.lecturas && data.lecturas.length > 0) {
+          const mapeadas = data.lecturas.map((l, i) => ({
+            tiempo: new Date(l.timestamp).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+            idx: i,
+            tempInterna: l.tempFermentador,
+            tempExterna: l.tempRefrigerador,
+            ph: l.ph,
+            densidad: l.densidad,
+          }));
+          setSerieReal(mapeadas);
+        }
+      } catch (err) {
+        // Sin datos reales todavía — se sigue con la serie simulada.
+      }
+    }
+
+    cargarLecturas();
+    const intervalo = setInterval(cargarLecturas, 20000);
+    return () => { cancelado = true; clearInterval(intervalo); };
+  }, [modulo.deviceId]);
+
   const receta = recetas.find((r) => r.id === recetaId) ?? recetas[0];
 
-  // La serie se recalcula cada vez que cambia la receta (tiempo real)
-  const serie = useMemo(() => generarSerieDemo(receta), [receta]);
+  // La serie se recalcula cada vez que cambia la receta (tiempo real);
+  // si ya hay lecturas reales del ESP32, esas tienen prioridad sobre
+  // la serie simulada.
+  const serieDemo = useMemo(() => generarSerieDemo(receta), [receta]);
+  const serie = serieReal ?? serieDemo;
+  const hayDatosReales = serieReal !== null;
 
   // El rango "válido" de densidad es el tramo entre inicial y final de la receta
   // (la densidad debe ir bajando dentro de esa banda conforme avanza la fermentación)
@@ -553,6 +590,18 @@ function ModuloCard({ modulo, usuarioId }) {
             )}
           </div>
           <h2 style={{ fontFamily: "'Playfair Display', serif", color: palette.textBright, fontSize: 24, margin: "4px 0 0" }}>{modulo.apodo}</h2>
+        </div>
+        <div
+          style={{
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: 10.5,
+            padding: "4px 12px",
+            borderRadius: 20,
+            border: `1px solid ${hayDatosReales ? palette.good : palette.borderSoft}`,
+            color: hayDatosReales ? palette.good : palette.textMute,
+          }}
+        >
+          {hayDatosReales ? "● Datos en vivo" : "○ Datos de ejemplo"}
         </div>
       </div>
 
@@ -693,7 +742,7 @@ function Header({ onLogout }) {
 }
 
 export default function DestilacionDashboard({ usuario, onLogout }) {
-  const modulos = [{ id: "DEST-0001", apodo: "Fermentador 1", recetaId: null }];
+  const modulos = [{ id: "DEST-0001", deviceId: "esp32-destilacion", apodo: "Fermentador 1", recetaId: null }];
 
   return (
     <div style={{ minHeight: "100vh", background: palette.bg, fontFamily: "'IBM Plex Sans', sans-serif", padding: "28px 32px" }}>
