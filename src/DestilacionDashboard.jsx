@@ -675,6 +675,7 @@ function ModuloCard({ modulo, usuarioId }) {
       conexion.onclose((err) => console.warn("SignalR: conexión cerrada.", err));
 
       conexion.on("nuevaLectura", (lectura) => {
+        console.log(`[${new Date().toLocaleTimeString()}] Lectura recibida por SignalR:`, lectura);
         if (cancelado) return;
         if (lectura.deviceId !== modulo.deviceId) return;
         const fecha = new Date(lectura.timestamp);
