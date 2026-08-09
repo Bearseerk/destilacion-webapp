@@ -660,9 +660,19 @@ function ModuloCard({ modulo, usuarioId }) {
 
     async function conectarSignalR() {
       conexion = new signalR.HubConnectionBuilder()
-        .withUrl(`${API_BASE_URL}/negotiate`)
-        .withAutomaticReconnect()
+        // El cliente de SignalR agrega "/negotiate" automáticamente a esta
+        // URL — por eso aquí va SOLO la base (API_BASE_URL ya termina en
+        // /api), sin agregarlo manual otra vez (eso causaba la URL
+        // duplicada .../negotiate/negotiate).
+        // withCredentials:false porque la función es anónima (no usa
+        // cookies) — sin esto, el navegador rechaza la respuesta por CORS.
+        .withUrl(API_BASE_URL, { withCredentials: false })
+        .withAutomaticReconnect([0, 1000, 2000, 5000]) // reconecta rápido (antes tardaba hasta 30s+ con los tiempos por default)
         .build();
+
+      conexion.onreconnecting((err) => console.warn("SignalR: reconectando...", err));
+      conexion.onreconnected(() => console.log("SignalR: reconectado."));
+      conexion.onclose((err) => console.warn("SignalR: conexión cerrada.", err));
 
       conexion.on("nuevaLectura", (lectura) => {
         if (cancelado) return;
