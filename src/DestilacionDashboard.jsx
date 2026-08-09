@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import * as signalR from "@microsoft/signalr";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ── PON AQUÍ LA URL DE TU FUNCTION APP (misma que en el login) ──
@@ -645,6 +646,48 @@ function ModuloCard({ modulo, usuarioId }) {
     cargarLecturas();
     const intervalo = setInterval(cargarLecturas, 12000); // cada 12s, igual al ritmo con el que manda el ESP32
     return () => { cancelado = true; clearInterval(intervalo); };
+  }, [modulo.deviceId]);
+
+  // ── Conexión SignalR (push en tiempo real) ──────────────────────────
+  // Corre EN PARALELO al polling de arriba (a propósito, para comparar
+  // tráfico de red: polling = peticiones fijas cada 12s haya o no datos
+  // nuevos; SignalR = solo transmite cuando de verdad llega algo, vía un
+  // único WebSocket persistente). Cuando llega una lectura por push, se
+  // agrega directo a la serie sin esperar el siguiente ciclo de fetch.
+  useEffect(() => {
+    let conexion;
+    let cancelado = false;
+
+    async function conectarSignalR() {
+      conexion = new signalR.HubConnectionBuilder()
+        .withUrl(`${API_BASE_URL}/negotiate`)
+        .withAutomaticReconnect()
+        .build();
+
+      conexion.on("nuevaLectura", (lectura) => {
+        if (lectura.deviceId !== modulo.deviceId) return;
+        const fecha = new Date(lectura.timestamp);
+        const punto = {
+          tiempo: fecha.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
+          idx: fecha.getTime() / 60000,
+          tempInterna: lectura.tempFermentador,
+          tempExterna: lectura.tempRefrigerador,
+          ph: lectura.ph,
+          densidad: lectura.densidad,
+        };
+        setSerieReal((prev) => (prev ? [...prev, punto] : [punto]));
+      });
+
+      try {
+        await conexion.start();
+        console.log("SignalR conectado (WebSocket en vivo).");
+      } catch (err) {
+        console.error("Error al conectar SignalR:", err);
+      }
+    }
+
+    conectarSignalR();
+    return () => { cancelado = true; conexion?.stop(); };
   }, [modulo.deviceId]);
 
   const receta = recetas.find((r) => r.id === recetaId) ?? recetas[0];
