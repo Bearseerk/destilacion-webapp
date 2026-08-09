@@ -232,9 +232,14 @@ function GraficaCombinada({ serie, rangos, filtro }) {
   // huecos vacíos absurdos), esta ventana se va recorriendo sola: cada
   // minuto que pasa, se "cae" del lado izquierdo lo que ya tiene más de
   // 24h, y el lado derecho siempre representa el momento actual.
-  const [ahoraMin, setAhoraMin] = useState(() => Math.floor(Date.now() / 60000));
+  const [ahoraMin, setAhoraMin] = useState(() => Date.now() / 60000);
   useEffect(() => {
-    const id = setInterval(() => setAhoraMin(Math.floor(Date.now() / 60000)), 60000);
+    // Antes se refrescaba cada 60s — un dato que llegaba por SignalR
+    // justo después del refresco se quedaba fuera del dominio visible
+    // (domainMax desactualizado) hasta el siguiente minuto exacto, dando
+    // la impresión de que tardaba ~1 min en aparecer. Con 5s de por medio,
+    // el retraso máximo baja a unos segundos, casi imperceptible.
+    const id = setInterval(() => setAhoraMin(Date.now() / 60000), 5000);
     return () => clearInterval(id);
   }, []);
 
