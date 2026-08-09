@@ -665,6 +665,7 @@ function ModuloCard({ modulo, usuarioId }) {
         .build();
 
       conexion.on("nuevaLectura", (lectura) => {
+        if (cancelado) return;
         if (lectura.deviceId !== modulo.deviceId) return;
         const fecha = new Date(lectura.timestamp);
         const punto = {
