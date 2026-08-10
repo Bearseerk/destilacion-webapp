@@ -1240,166 +1240,48 @@ function Header({ onLogout }) {
   );
 }
 
-// ── Formulario para vincular un módulo nuevo a la cuenta ────────────────
-function VincularModulo({ usuarioId, onVinculado }) {
-  const [mostrar, setMostrar] = useState(false);
-  const [moduleKey, setModuleKey] = useState("");
-  const [apodo, setApodo] = useState("");
-  const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState("");
-
-  async function vincular() {
-    if (!moduleKey.trim()) {
-      setError("Escribe la key de tu módulo.");
-      return;
-    }
-    setError("");
-    setCargando(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/modulos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuarioId, moduleKey: moduleKey.trim(), apodo: apodo.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo vincular el módulo.");
-        return;
-      }
-      onVinculado(data);
-      setMostrar(false);
-      setModuleKey("");
-      setApodo("");
-    } catch (err) {
-      console.error("Error al vincular módulo:", err);
-      setError("No se pudo conectar con el servidor.");
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  const inputStyle = {
-    background: palette.panelAlt,
-    border: `1px solid ${palette.border}`,
-    borderRadius: 4,
-    color: palette.textBright,
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 13,
-    padding: "9px 12px",
-    outline: "none",
-    width: 220,
-  };
-
-  if (!mostrar) {
-    return (
-      <button
-        onClick={() => setMostrar(true)}
-        style={{
-          fontFamily: "'IBM Plex Mono', monospace",
-          fontSize: 12.5,
-          padding: "9px 18px",
-          borderRadius: 4,
-          border: `1px solid ${palette.amberSoft}`,
-          background: "transparent",
-          color: palette.amber,
-          cursor: "pointer",
-          marginBottom: 24,
-        }}
-      >
-        + Vincular módulo
-      </button>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        background: palette.panel,
-        border: `1px solid ${palette.border}`,
-        borderRadius: 6,
-        padding: 20,
-        marginBottom: 24,
-        display: "flex",
-        gap: 14,
-        flexWrap: "wrap",
-        alignItems: "flex-end",
-      }}
-    >
-      <div>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: palette.textMute, marginBottom: 6, letterSpacing: "0.05em" }}>
-          KEY DEL MÓDULO
-        </div>
-        <input style={inputStyle} value={moduleKey} onChange={(e) => setModuleKey(e.target.value)} placeholder="esp32-destilacion" />
-      </div>
-      <div>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: palette.textMute, marginBottom: 6, letterSpacing: "0.05em" }}>
-          APODO (OPCIONAL)
-        </div>
-        <input style={inputStyle} value={apodo} onChange={(e) => setApodo(e.target.value)} placeholder="Fermentador 1" />
-      </div>
-      <button
-        onClick={vincular}
-        disabled={cargando}
-        style={{
-          fontFamily: "'IBM Plex Mono', monospace",
-          fontSize: 12.5,
-          padding: "10px 20px",
-          borderRadius: 4,
-          border: "none",
-          background: palette.amber,
-          color: palette.bg,
-          fontWeight: 600,
-          cursor: cargando ? "default" : "pointer",
-          opacity: cargando ? 0.7 : 1,
-          height: 38,
-        }}
-      >
-        {cargando ? "Vinculando..." : "Vincular"}
-      </button>
-      <button
-        onClick={() => { setMostrar(false); setError(""); }}
-        style={{
-          fontFamily: "'IBM Plex Mono', monospace",
-          fontSize: 12.5,
-          padding: "10px 16px",
-          borderRadius: 4,
-          border: `1px solid ${palette.border}`,
-          background: "transparent",
-          color: palette.textLight,
-          cursor: "pointer",
-          height: 38,
-        }}
-      >
-        Cancelar
-      </button>
-      {error && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: palette.rojo, width: "100%" }}>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
+// Key fija del único módulo físico que existe por ahora. El sistema de
+// "vincular módulo a mano" quedó fuera por decisión del equipo — en vez
+// de eso, cada usuario se auto-vincula a este módulo fijo por detrás,
+// sin que se vea ningún formulario, solo para poder guardar su última
+// receta seleccionada en la BD (eso sí lo pidieron mantener).
+const MODULE_KEY_FIJA = "esp32-destilacion";
 
 export default function DestilacionDashboard({ usuario, onLogout }) {
-  const [modulos, setModulos] = useState([]);
-  const [cargandoModulos, setCargandoModulos] = useState(true);
+  const [modulo, setModulo] = useState(null);
+  const [cargandoModulo, setCargandoModulo] = useState(true);
 
   useEffect(() => {
     let cancelado = false;
-    async function cargarModulos() {
-      if (!usuario?.id) { setCargandoModulos(false); return; }
+    async function prepararModulo() {
+      if (!usuario?.id) { setCargandoModulo(false); return; }
       try {
         const res = await fetch(`${API_BASE_URL}/modulos?usuarioId=${usuario.id}`);
         const data = await res.json();
-        if (!cancelado && res.ok) setModulos(data.modulos || []);
+        let encontrado = (data.modulos || []).find((m) => m.moduleKey === MODULE_KEY_FIJA);
+
+        // Si este usuario todavía no tiene el módulo fijo vinculado por
+        // detrás, se vincula solo, sin pedirle nada.
+        if (!encontrado) {
+          const resPost = await fetch(`${API_BASE_URL}/modulos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ usuarioId: usuario.id, moduleKey: MODULE_KEY_FIJA, apodo: "Fermentador 1" }),
+          });
+          if (resPost.ok) {
+            const nuevo = await resPost.json();
+            encontrado = { usuarioModuloId: nuevo.usuarioModuloId, moduleKey: nuevo.moduleKey, apodo: nuevo.apodo, ultimaRecetaId: null };
+          }
+        }
+
+        if (!cancelado && encontrado) setModulo(encontrado);
       } catch (err) {
-        console.error("Error al cargar módulos:", err);
+        console.error("Error al preparar el módulo:", err);
       } finally {
-        if (!cancelado) setCargandoModulos(false);
+        if (!cancelado) setCargandoModulo(false);
       }
     }
-    cargarModulos();
+    prepararModulo();
     return () => { cancelado = true; };
   }, [usuario?.id]);
 
@@ -1407,30 +1289,18 @@ export default function DestilacionDashboard({ usuario, onLogout }) {
     <div style={{ minHeight: "100vh", background: palette.bg, fontFamily: "'IBM Plex Sans', sans-serif", padding: "28px 32px" }}>
       <Header onLogout={onLogout} />
 
-      <VincularModulo
-        usuarioId={usuario?.id}
-        onVinculado={(nuevo) => setModulos((prev) => [...prev, nuevo])}
-      />
-
-      {cargandoModulos && (
+      {cargandoModulo && (
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.textMute }}>
-          Cargando tus módulos...
+          Cargando...
         </div>
       )}
 
-      {!cargandoModulos && modulos.length === 0 && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: palette.textMute, marginBottom: 20 }}>
-          Todavía no tienes ningún módulo vinculado — usa "+ Vincular módulo" con la key de tu ESP32.
-        </div>
-      )}
-
-      {modulos.map((m) => (
+      {!cargandoModulo && modulo && (
         <ModuloCard
-          key={m.usuarioModuloId}
-          modulo={{ id: m.usuarioModuloId, deviceId: m.moduleKey, apodo: m.apodo, recetaId: m.ultimaRecetaId ?? null }}
+          modulo={{ id: modulo.usuarioModuloId, deviceId: modulo.moduleKey, apodo: modulo.apodo, recetaId: modulo.ultimaRecetaId ?? null }}
           usuarioId={usuario?.id}
         />
-      ))}
+      )}
 
       <div style={{ textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: palette.textMute, marginTop: 12, letterSpacing: "0.08em" }}>
         DESTILACIÓN · Sistema de monitoreo IoT · UTT
