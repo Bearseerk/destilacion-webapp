@@ -226,68 +226,12 @@ function BotonFiltro({ activo, label, color, onClick }) {
   );
 }
 
-function SelectorRango({ horas, onChange }) {
-  const opciones = [1, 2, 6, 12, 24];
-  const [custom, setCustom] = useState("");
-
-  return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: palette.textMute, marginRight: 2 }}>
-        VER:
-      </span>
-      {opciones.map((h) => (
-        <button
-          key={h}
-          onClick={() => { onChange(h); setCustom(""); }}
-          style={{
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 11,
-            padding: "5px 10px",
-            borderRadius: 14,
-            border: `1px solid ${horas === h ? palette.amber : palette.border}`,
-            background: horas === h ? `${palette.amber}22` : "transparent",
-            color: horas === h ? palette.textBright : palette.textMute,
-            cursor: "pointer",
-          }}
-        >
-          {h}h
-        </button>
-      ))}
-      <input
-        type="number"
-        min="1"
-        max="720"
-        placeholder="hrs"
-        value={custom}
-        onChange={(e) => {
-          const v = e.target.value;
-          setCustom(v);
-          const n = parseInt(v, 10);
-          if (n > 0) onChange(n);
-        }}
-        style={{
-          width: 52,
-          fontFamily: "'IBM Plex Mono', monospace",
-          fontSize: 11,
-          padding: "5px 8px",
-          borderRadius: 14,
-          border: `1px solid ${palette.border}`,
-          background: palette.panelAlt,
-          color: palette.textBright,
-          outline: "none",
-        }}
-      />
-    </div>
-  );
-}
-
-function GraficaCombinada({ serie, rangos, filtro, horasVentana = 24 }) {
-  // Ventana MÓVIL de las últimas N horas (configurable), terminando
-  // siempre en "ahora". A diferencia de un eje fijo de medianoche a
-  // medianoche (que dejaba huecos vacíos absurdos), esta ventana se va
-  // recorriendo sola: cada minuto que pasa, se "cae" del lado izquierdo
-  // lo que ya tiene más de N horas, y el lado derecho siempre representa
-  // el momento actual.
+function GraficaCombinada({ serie, rangos, filtro }) {
+  // Ventana MÓVIL de las últimas 24 horas, terminando siempre en "ahora".
+  // A diferencia de un eje fijo de medianoche a medianoche (que dejaba
+  // huecos vacíos absurdos), esta ventana se va recorriendo sola: cada
+  // minuto que pasa, se "cae" del lado izquierdo lo que ya tiene más de
+  // 24h, y el lado derecho siempre representa el momento actual.
   const [ahoraMin, setAhoraMin] = useState(() => Date.now() / 60000);
   useEffect(() => {
     // Antes se refrescaba cada 60s — un dato que llegaba por SignalR
@@ -299,28 +243,19 @@ function GraficaCombinada({ serie, rangos, filtro, horasVentana = 24 }) {
     return () => clearInterval(id);
   }, []);
 
-  const VENTANA_MIN = horasVentana * 60;
+  const VENTANA_MIN = 24 * 60;
   const domainMin = ahoraMin - VENTANA_MIN;
   const domainMax = ahoraMin;
 
-  // El intervalo entre marcas del eje se adapta al tamaño de la ventana:
-  // ventanas cortas (1-2h) marcan cada 15 min, medianas (6-12h) cada 30 min,
-  // largas (24h+) cada hora — así siempre hay una cantidad legible de marcas.
-  const intervaloTick = horasVentana <= 2 ? 15 : horasVentana <= 12 ? 30 : 60;
+  // Genera una marca por cada hora exacta que cae dentro de la ventana visible
   const ticks = [];
-  const primerTick = Math.ceil(domainMin / intervaloTick) * intervaloTick;
-  for (let t = primerTick; t <= domainMax; t += intervaloTick) ticks.push(t);
+  const primerTick = Math.ceil(domainMin / 60) * 60;
+  for (let t = primerTick; t <= domainMax; t += 60) ticks.push(t);
 
   function formatoHora12(minutosEpoch) {
     const fecha = new Date(minutosEpoch * 60000);
     const h = fecha.getHours();
     const h12 = h % 12 === 0 ? 12 : h % 12;
-    // En ventanas cortas se ve la hora completa (ej. "3:15"); en ventanas
-    // largas solo el número de hora (ej. "3"), como antes.
-    if (intervaloTick < 60) {
-      const m = fecha.getMinutes();
-      return `${h12}:${String(m).padStart(2, "0")}`;
-    }
     return String(h12);
   }
 
@@ -644,241 +579,10 @@ function SelectorReceta({ recetas, recetaId, onChange, onCrear }) {
   );
 }
 
-function HistorialDia({ deviceId, rangos }) {
-  const [fecha, setFecha] = useState("");
-  const [cargando, setCargando] = useState(false);
-  const [serieDia, setSerieDia] = useState(null);
-  const [error, setError] = useState("");
-
-  async function cargarDia(fechaStr) {
-    if (!fechaStr) return;
-    setCargando(true);
-    setError("");
-    try {
-      // Medianoche a medianoche en la hora LOCAL del navegador — se manda
-      // como ISO al backend, que ya sabe filtrar por ese rango exacto.
-      const inicio = new Date(`${fechaStr}T00:00:00`);
-      const fin = new Date(`${fechaStr}T23:59:59.999`);
-      const res = await fetch(
-        `${API_BASE_URL}/lecturas?deviceId=${deviceId}&desde=${inicio.toISOString()}&hasta=${fin.toISOString()}&limite=4000`
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error");
-      const mapeadas = (data.lecturas || []).map((l) => {
-        const f = new Date(l.timestamp);
-        return {
-          tiempo: f.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }),
-          idx: f.getTime() / 60000,
-          tempInterna: l.tempFermentador,
-          tempExterna: l.tempRefrigerador,
-          ph: l.ph,
-          densidad: l.densidad,
-        };
-      });
-      setSerieDia(mapeadas);
-    } catch (err) {
-      console.error("Error al cargar historial del día:", err);
-      setError("No se pudo cargar ese día.");
-      setSerieDia(null);
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  function promedio(key) {
-    if (!serieDia || serieDia.length === 0) return null;
-    const vals = serieDia.map((p) => p[key]).filter((v) => v !== null && v !== undefined);
-    if (vals.length === 0) return null;
-    return vals.reduce((a, b) => a + b, 0) / vals.length;
-  }
-
-  const duracionesDia = serieDia ? {
-    tempInterna: tiempoFueraDeRango(serieDia, "tempInterna", rangos.tempInterna),
-    tempExterna: tiempoFueraDeRango(serieDia, "tempExterna", rangos.tempExterna),
-    ph: tiempoFueraDeRango(serieDia, "ph", rangos.ph),
-    densidad: tiempoFueraDeRango(serieDia, "densidad", rangos.densidad),
-  } : null;
-
-  // Dominio FIJO: medianoche a medianoche del día elegido (no rueda como
-  // la gráfica en vivo, es estático porque es un día ya pasado).
-  let domainMin = null, domainMax = null, ticksDia = [];
-  if (fecha) {
-    const inicio = new Date(`${fecha}T00:00:00`);
-    domainMin = inicio.getTime() / 60000;
-    domainMax = domainMin + 1439;
-    ticksDia = Array.from({ length: 24 }, (_, h) => domainMin + h * 60);
-  }
-
-  function formatoHora12Dia(minutosEpoch) {
-    const f = new Date(minutosEpoch * 60000);
-    const h = f.getHours();
-    return String(h % 12 === 0 ? 12 : h % 12);
-  }
-
-  function tooltipDia({ active, payload, label }) {
-    if (!active || !payload || payload.length === 0) return null;
-    const vistos = new Set();
-    const filas = [];
-    payload.forEach((entry) => {
-      if (entry.payload?.idx !== label) return;
-      if (vistos.has(entry.name)) return;
-      vistos.add(entry.name);
-      filas.push(entry);
-    });
-    if (filas.length === 0) return null;
-    const f = new Date(label * 60000);
-    return (
-      <div style={{ background: palette.panelAlt, border: `1px solid ${palette.border}`, borderRadius: 4, fontFamily: "IBM Plex Mono", fontSize: 12, padding: "8px 10px" }}>
-        <div style={{ color: palette.textDim, marginBottom: 4 }}>{f.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</div>
-        {filas.map((entry) => (
-          <div key={entry.name} style={{ color: entry.color }}>
-            {(METRICAS[entry.name]?.label ?? entry.name)} : {entry.value}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 28, paddingTop: 20, borderTop: `1px solid ${palette.border}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.1em", color: palette.textMute, textTransform: "uppercase" }}>
-          Historial por día
-        </div>
-        <input
-          type="date"
-          value={fecha}
-          max={new Date().toISOString().slice(0, 10)}
-          onChange={(e) => { setFecha(e.target.value); cargarDia(e.target.value); }}
-          style={{
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 12,
-            padding: "7px 10px",
-            borderRadius: 4,
-            border: `1px solid ${palette.border}`,
-            background: palette.panelAlt,
-            color: palette.textBright,
-            colorScheme: "dark",
-          }}
-        />
-      </div>
-
-      {!fecha && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.textMute }}>
-          Elige un día para ver su historial completo.
-        </div>
-      )}
-      {cargando && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.textMute }}>Cargando...</div>
-      )}
-      {error && <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.rojo }}>{error}</div>}
-
-      {fecha && !cargando && serieDia && serieDia.length === 0 && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.textMute }}>
-          No hay lecturas registradas ese día.
-        </div>
-      )}
-
-      {fecha && !cargando && serieDia && serieDia.length > 0 && (
-        <>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
-            <Metric label="Temp. Interna (prom.)" valor={promedio("tempInterna")?.toFixed(1) ?? "—"} unidad="°C" fueraMin={duracionesDia.tempInterna} color={palette.amber} />
-            <Metric label="Temp. Externa (prom.)" valor={promedio("tempExterna")?.toFixed(1) ?? "—"} unidad="°C" fueraMin={duracionesDia.tempExterna} color={palette.blanco} />
-            <Metric label="pH (prom.)" valor={promedio("ph")?.toFixed(2) ?? "—"} unidad="" fueraMin={duracionesDia.ph} color={palette.azulClaro} />
-            <Metric label="Densidad (prom.)" valor={promedio("densidad")?.toFixed(3) ?? "—"} unidad="SG" fueraMin={duracionesDia.densidad} color={palette.good} />
-          </div>
-
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke={palette.borderSoft} vertical={false} />
-              <XAxis
-                dataKey="idx"
-                type="number"
-                domain={[domainMin, domainMax]}
-                ticks={ticksDia}
-                tickFormatter={formatoHora12Dia}
-                tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }}
-                axisLine={{ stroke: palette.border }}
-                tickLine={false}
-              />
-              <YAxis yAxisId="temp" tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }} axisLine={false} tickLine={false} width={40} />
-              <YAxis yAxisId="ph" orientation="right" tick={{ fill: palette.textMute, fontSize: 10.5, fontFamily: "IBM Plex Mono" }} axisLine={false} tickLine={false} width={34} domain={["auto", "auto"]} />
-              <YAxis yAxisId="densidad" orientation="right" hide domain={["auto", "auto"]} />
-              <Tooltip content={tooltipDia} />
-              <Legend wrapperStyle={{ fontFamily: "IBM Plex Mono", fontSize: 11, color: palette.textDim }} formatter={(value) => METRICAS[value]?.label ?? value} />
-              {["tempInterna", "tempExterna", "ph", "densidad"].map((metricaId) => {
-                const m = METRICAS[metricaId];
-                const eje = metricaId === "ph" ? "ph" : metricaId === "densidad" ? "densidad" : "temp";
-                const segmentos = segmentar(serieDia, m.key, rangos[metricaId]);
-                return segmentos.map((seg, i) => (
-                  <Line
-                    key={`${metricaId}-${i}`}
-                    yAxisId={eje}
-                    data={seg.data}
-                    dataKey={m.key}
-                    name={metricaId}
-                    stroke={seg.fuera ? palette.rojo : m.color}
-                    strokeWidth={seg.fuera ? 2.5 : 2}
-                    dot={false}
-                    isAnimationActive={false}
-                    legendType={i === 0 ? "line" : "none"}
-                    connectNulls
-                  />
-                ));
-              })}
-            </LineChart>
-          </ResponsiveContainer>
-        </>
-      )}
-    </div>
-  );
-}
-
 function ModuloCard({ modulo, usuarioId }) {
-  const [apodoActual, setApodoActual] = useState(modulo.apodo);
-  const [editandoApodo, setEditandoApodo] = useState(false);
-  const [apodoTemp, setApodoTemp] = useState(modulo.apodo);
-
-  // Guarda en la BD cuál fue la última receta elegida, para que la
-  // próxima vez que el usuario entre (aunque sea desde otra sesión),
-  // aparezca seleccionada la misma en vez de reiniciar cada vez.
-  async function guardarUltimaReceta(recetaId) {
-    try {
-      await fetch(`${API_BASE_URL}/modulos`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuarioModuloId: modulo.id, recetaId }),
-      });
-    } catch (err) {
-      console.error("Error al guardar la última receta:", err);
-    }
-  }
-
-  async function guardarApodo() {
-    const nuevo = apodoTemp.trim();
-    if (!nuevo || nuevo === apodoActual) { setEditandoApodo(false); setApodoTemp(apodoActual); return; }
-    try {
-      const res = await fetch(`${API_BASE_URL}/modulos`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuarioModuloId: modulo.id, apodo: nuevo }),
-      });
-      if (res.ok) {
-        setApodoActual(nuevo);
-      } else {
-        setApodoTemp(apodoActual); // revertir si falló
-      }
-    } catch (err) {
-      console.error("Error al renombrar módulo:", err);
-      setApodoTemp(apodoActual);
-    } finally {
-      setEditandoApodo(false);
-    }
-  }
   const [recetas, setRecetas] = useState(RECETAS_PREDEFINIDAS);
   const [recetaId, setRecetaId] = useState(modulo.recetaId);
   const [filtro, setFiltro] = useState("global");
-  const [horasVentana, setHorasVentana] = useState(24);
   const [cargandoRecetas, setCargandoRecetas] = useState(true);
   const [serieReal, setSerieReal] = useState(null);
 
@@ -1023,20 +727,11 @@ function ModuloCard({ modulo, usuarioId }) {
 
   const ultimo = serie[serie.length - 1];
 
-  // BUG corregido: antes tiempoFueraDeRango() usaba TODA la serie
-  // acumulada (hasta 3600 lecturas de pruebas de varios días distintos),
-  // así que al cambiar de receta sumaba horas "fuera de rango" de datos
-  // de pruebas viejas que ni siquiera correspondían a esa receta. Ahora
-  // se recorta a solo las últimas 24 horas (mismo criterio que ya usa
-  // la gráfica), reiniciando el conteo día a día.
-  const ahoraMinutos = Date.now() / 60000;
-  const serieUltimas24h = serie.filter((p) => p.idx >= ahoraMinutos - 1440);
-
   const duraciones = {
-    tempInterna: tiempoFueraDeRango(serieUltimas24h, "tempInterna", rangos.tempInterna),
-    tempExterna: tiempoFueraDeRango(serieUltimas24h, "tempExterna", rangos.tempExterna),
-    ph: tiempoFueraDeRango(serieUltimas24h, "ph", rangos.ph),
-    densidad: tiempoFueraDeRango(serieUltimas24h, "densidad", rangos.densidad),
+    tempInterna: tiempoFueraDeRango(serie, "tempInterna", rangos.tempInterna),
+    tempExterna: tiempoFueraDeRango(serie, "tempExterna", rangos.tempExterna),
+    ph: tiempoFueraDeRango(serie, "ph", rangos.ph),
+    densidad: tiempoFueraDeRango(serie, "densidad", rangos.densidad),
   };
 
   return (
@@ -1052,34 +747,7 @@ function ModuloCard({ modulo, usuarioId }) {
               </span>
             )}
           </div>
-          {editandoApodo ? (
-            <input
-              autoFocus
-              value={apodoTemp}
-              onChange={(e) => setApodoTemp(e.target.value)}
-              onBlur={guardarApodo}
-              onKeyDown={(e) => e.key === "Enter" && guardarApodo()}
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                fontSize: 24,
-                color: palette.textBright,
-                background: "transparent",
-                border: `1px solid ${palette.amber}`,
-                borderRadius: 4,
-                padding: "2px 8px",
-                margin: "4px 0 0",
-                outline: "none",
-              }}
-            />
-          ) : (
-            <h2
-              onClick={() => setEditandoApodo(true)}
-              title="Clic para renombrar"
-              style={{ fontFamily: "'Playfair Display', serif", color: palette.textBright, fontSize: 24, margin: "4px 0 0", cursor: "pointer" }}
-            >
-              {apodoActual}
-            </h2>
-          )}
+          <h2 style={{ fontFamily: "'Playfair Display', serif", color: palette.textBright, fontSize: 24, margin: "4px 0 0" }}>{modulo.apodo}</h2>
         </div>
         <div
           style={{
@@ -1098,10 +766,7 @@ function ModuloCard({ modulo, usuarioId }) {
       <SelectorReceta
         recetas={recetas}
         recetaId={recetaId}
-        onChange={(id) => {
-          setRecetaId(id);
-          guardarUltimaReceta(id);
-        }}
+        onChange={setRecetaId}
         onCrear={async (datosReceta) => {
           const res = await fetch(`${API_BASE_URL}/recetas`, {
             method: "POST",
@@ -1113,7 +778,6 @@ function ModuloCard({ modulo, usuarioId }) {
           const nueva = apiRecetaToFrontend(data.receta);
           setRecetas((r) => [...r, nueva]);
           setRecetaId(nueva.id);
-          guardarUltimaReceta(nueva.id);
         }}
       />
 
@@ -1126,18 +790,13 @@ function ModuloCard({ modulo, usuarioId }) {
       </div>
 
       {/* Filtros de la gráfica */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {Object.entries(METRICAS).map(([id, m]) => (
-            <BotonFiltro key={id} activo={filtro === id} label={m.label} color={m.color} onClick={() => setFiltro(id)} />
-          ))}
-        </div>
-        <SelectorRango horas={horasVentana} onChange={setHorasVentana} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {Object.entries(METRICAS).map(([id, m]) => (
+          <BotonFiltro key={id} activo={filtro === id} label={m.label} color={m.color} onClick={() => setFiltro(id)} />
+        ))}
       </div>
 
-      <GraficaCombinada serie={serie} rangos={rangos} filtro={filtro} horasVentana={horasVentana} />
-
-      <HistorialDia deviceId={modulo.deviceId} rangos={rangos} />
+      <GraficaCombinada serie={serie} rangos={rangos} filtro={filtro} />
     </div>
   );
 }
@@ -1240,67 +899,16 @@ function Header({ onLogout }) {
   );
 }
 
-// Key fija del único módulo físico que existe por ahora. El sistema de
-// "vincular módulo a mano" quedó fuera por decisión del equipo — en vez
-// de eso, cada usuario se auto-vincula a este módulo fijo por detrás,
-// sin que se vea ningún formulario, solo para poder guardar su última
-// receta seleccionada en la BD (eso sí lo pidieron mantener).
-const MODULE_KEY_FIJA = "esp32-destilacion";
-
 export default function DestilacionDashboard({ usuario, onLogout }) {
-  const [modulo, setModulo] = useState(null);
-  const [cargandoModulo, setCargandoModulo] = useState(true);
-
-  useEffect(() => {
-    let cancelado = false;
-    async function prepararModulo() {
-      if (!usuario?.id) { setCargandoModulo(false); return; }
-      try {
-        const res = await fetch(`${API_BASE_URL}/modulos?usuarioId=${usuario.id}`);
-        const data = await res.json();
-        let encontrado = (data.modulos || []).find((m) => m.moduleKey === MODULE_KEY_FIJA);
-
-        // Si este usuario todavía no tiene el módulo fijo vinculado por
-        // detrás, se vincula solo, sin pedirle nada.
-        if (!encontrado) {
-          const resPost = await fetch(`${API_BASE_URL}/modulos`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ usuarioId: usuario.id, moduleKey: MODULE_KEY_FIJA, apodo: "Fermentador 1" }),
-          });
-          if (resPost.ok) {
-            const nuevo = await resPost.json();
-            encontrado = { usuarioModuloId: nuevo.usuarioModuloId, moduleKey: nuevo.moduleKey, apodo: nuevo.apodo, ultimaRecetaId: null };
-          }
-        }
-
-        if (!cancelado && encontrado) setModulo(encontrado);
-      } catch (err) {
-        console.error("Error al preparar el módulo:", err);
-      } finally {
-        if (!cancelado) setCargandoModulo(false);
-      }
-    }
-    prepararModulo();
-    return () => { cancelado = true; };
-  }, [usuario?.id]);
+  const modulos = [{ id: "DEST-0001", deviceId: "esp32-destilacion", apodo: "Fermentador 1", recetaId: null }];
 
   return (
     <div style={{ minHeight: "100vh", background: palette.bg, fontFamily: "'IBM Plex Sans', sans-serif", padding: "28px 32px" }}>
       <Header onLogout={onLogout} />
 
-      {cargandoModulo && (
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: palette.textMute }}>
-          Cargando...
-        </div>
-      )}
-
-      {!cargandoModulo && modulo && (
-        <ModuloCard
-          modulo={{ id: modulo.usuarioModuloId, deviceId: modulo.moduleKey, apodo: modulo.apodo, recetaId: modulo.ultimaRecetaId ?? null }}
-          usuarioId={usuario?.id}
-        />
-      )}
+      {modulos.map((m) => (
+        <ModuloCard key={m.id} modulo={m} usuarioId={usuario?.id} />
+      ))}
 
       <div style={{ textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: palette.textMute, marginTop: 12, letterSpacing: "0.08em" }}>
         DESTILACIÓN · Sistema de monitoreo IoT · UTT
