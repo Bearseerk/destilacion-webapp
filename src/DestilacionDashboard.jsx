@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as signalR from "@microsoft/signalr";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
@@ -436,6 +436,7 @@ function GraficaCombinada({ serie, rangos, filtro, horasVentana = 24 }) {
 //    promedios + horas fuera de rango de ese día en específico. ──
 function HistorialDia({ deviceId, rangos }) {
   const [fecha, setFecha] = useState("");
+  const fechaInputRef = useRef(null);
   const [cargando, setCargando] = useState(false);
   const [serieDia, setSerieDia] = useState(null);
   const [error, setError] = useState("");
@@ -527,26 +528,52 @@ function HistorialDia({ deviceId, rangos }) {
 
   return (
     <div style={{ marginTop: 28, paddingTop: 20, borderTop: `1px solid ${palette.border}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.1em", color: palette.textMute, textTransform: "uppercase" }}>
           Historial por día
         </div>
-        <input
-          type="date"
-          value={fecha}
-          max={new Date().toISOString().slice(0, 10)}
-          onChange={(e) => { setFecha(e.target.value); cargarDia(e.target.value); }}
-          style={{
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 12,
-            padding: "7px 10px",
-            borderRadius: 4,
-            border: `1px solid ${palette.border}`,
-            background: palette.panelAlt,
-            color: palette.textBright,
-            colorScheme: "dark",
-          }}
-        />
+
+        {/* Botón "Historial" que abre el calendario nativo al hacer clic —
+            va pegado a la izquierda (junto al título) en vez de estirado
+            al borde derecho, para que el calendario emergente no se corte
+            entre dos pantallas conectadas (el sábado, columna más a la
+            derecha, se perdía en la pantalla secundaria). */}
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button
+            onClick={() => fechaInputRef.current?.showPicker?.() ?? fechaInputRef.current?.click()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 12,
+              padding: "8px 14px",
+              borderRadius: 4,
+              border: `1px solid ${palette.border}`,
+              background: palette.panelAlt,
+              color: palette.textBright,
+              cursor: "pointer",
+            }}
+          >
+            📅 {fecha ? fecha : "Historial"}
+          </button>
+          <input
+            ref={fechaInputRef}
+            type="date"
+            value={fecha}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => { setFecha(e.target.value); cargarDia(e.target.value); }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              opacity: 0,
+              pointerEvents: "none",
+            }}
+          />
+        </div>
       </div>
 
       {!fecha && (
