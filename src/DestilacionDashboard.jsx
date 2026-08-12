@@ -1025,7 +1025,7 @@ function ModuloCard({ modulo, usuarioId }) {
         <Metric label="Temp. Interna" valor={ultimo.tempInterna} unidad="°C" fueraMin={duraciones.tempInterna} color={palette.amber} />
         <Metric label="Temp. Externa" valor={ultimo.tempExterna} unidad="°C" fueraMin={duraciones.tempExterna} color={palette.blanco} />
         <Metric label="pH" valor={ultimo.ph} unidad="" fueraMin={duraciones.ph} color={palette.azulClaro} />
-        <Metric label="Densidad" valor={ultimo.densidad.toFixed(3)} unidad="SG" fueraMin={duraciones.densidad} color={palette.good} />
+        <Metric label="Densidad" valor={ultimo.densidad != null ? ultimo.densidad.toFixed(3) : "—"} unidad="SG" fueraMin={duraciones.densidad} color={palette.good} />
       </div>
 
       {/* Filtros de la gráfica + selector de rango de horas (FIX #3) */}
